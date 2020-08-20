@@ -1,0 +1,5 @@
+#!/bin/bash
+
+Instring="$@" 
+Command=$(echo "$Instring" | sed 's/ (/./g' | sed 's/)//g' | sed 's/:man:/:man -Pcat:/g' | awk -F ':' '{print $2 " " $1}')
+eval "$Command" 
