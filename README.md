@@ -1,5 +1,7 @@
 # quite-intriguing
 
+## Find the right manpage or cheatsheet, easily.
+
 ![qi logo](https://raw.githubusercontent.com/uriel1998/mpdq/master/qi-open-graph.png "logo")
 
 ![qi in action](https://raw.githubusercontent.com/uriel1998/mpdq/master/example.gif "qi in action")
