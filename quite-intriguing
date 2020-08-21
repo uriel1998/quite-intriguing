@@ -2,7 +2,7 @@
 
 #Strongly inspired by [macho](https://hiphish.github.io/blog/2020/05/31/macho-man-command-on-steroids/)
 
-CacheFile=$HOME/.config/mansearch_cachefile
+CacheFile=$HOME/.config/qi_cachefile
 TempFile=$(mktemp)
 Long=0
 NumResults=0
@@ -67,13 +67,13 @@ make_choices () {
 ##############################################################################
 display_help(){
     echo "###################################################################"
-    echo "#  quite-intriguing [-h|-g|-p|-r|-q QUERY]"
+    echo "#  quite-intriguing [-h|-g|-p|-r] [QUERY]"
     echo "# -h show help "
     echo "# -g GUI interface only. Default is CLI/TUI. "
     echo "# NOTE: gui display of results is a bit wonky for some reason. "
     echo "# -p Prefetch and compile options. "
     echo "# -r Rebuild available options and run (raw mode). "
-    echo "# -q starts with search for QUERY (assumes TUI mode)"
+    echo "# QUERY (optional) starts with search for QUERY (assumes TUI mode)"
     echo "###################################################################"
 }
 
@@ -113,20 +113,12 @@ choose_page (){
 }
  
 
-#TODO: Have some way to annotate cheatsheets yourself?
-#TODO: have preview helper put in with the rest of this file
-#TODO: GUI output formatted properly
 ##############################################################################
 # Get options
 ##############################################################################
     while [ $# -gt 0 ]; do
     option="$1"
         case $option in
-        -q) shift
-            Query=$(echo "$1")
-            Run="true"
-            CliOnly="true"
-            shift;;
         -h) display_help
             exit
             shift ;;      
@@ -140,6 +132,10 @@ choose_page (){
             shift ;;
         -g) CliOnly="false"
             shift ;;      
+        *)  Query=$(echo "$1")
+            Run="true"
+            CliOnly="true"
+            shift;;
         esac
     done    
 if [ ! -f "$CacheFile" ];then 
