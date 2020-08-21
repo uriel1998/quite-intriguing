@@ -4,7 +4,7 @@
 
 ![qi logo](https://raw.githubusercontent.com/uriel1998/quite-intriguing/master/qi-open-graph.png "logo")
 
-![qi in action](https://raw.githubusercontent.com/uriel1998/quite-intriguing/master/example.gif "qi in action")
+![qi in action](https://raw.githubusercontent.com/uriel1998/quite-intriguing/master/example.gif "qi in action")  
 If the above is too small, you can see it on [terminalizer](https://terminalizer.com/view/c42ab47a4215)  
 
 ## Contents
