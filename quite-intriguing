@@ -81,6 +81,7 @@ choose_page (){
 
      #cat mansearch_cachefile | fzf --no-hscroll -m --height 60% --border --ansi --no-bold --preview="/home/steven/documents/programming/multiple_scripts/mansearch-fzf-preview {}"
     if [ "$CliOnly" == "true" ];then
+
         if [ -z "$Query" ]; then      
             #No Preview
             #SelectedFile=$(cat "$CacheFile" | fzf --no-hscroll -m --height 60% --border --ansi --no-bold)
@@ -90,7 +91,7 @@ choose_page (){
             #No Preview
             #SelectedFile=$(cat "$CacheFile" | fzf --no-hscroll -m --height 60% --border --ansi --no-bold  -1 --query="$Query")
             #With Preview
-            SelectedFile=$(cat "$CacheFile" | fzf --no-hscroll -m --height 60% --border --ansi --no-bold --preview="$SCRIPTDIR/quite-intriguing-preview {}" -1 --query="$Query" | sed 's/ (/./g' | sed 's/)//g' | sed 's/:man:/:man -Pcat:/g' | awk -F ':' '{print $2 " " $1}')
+            SelectedFile=$(cat "$CacheFile" | fzf --no-hscroll -m --height 60% --border --ansi --no-bold --preview="$SCRIPTDIR/quite-intriguing-preview {}" --query="$Query" | sed 's/ (/./g' | sed 's/)//g' | sed 's/:man:/:man -Pcat:/g' | awk -F ':' '{print $2 " " $1}')
         fi
 
         if [ -z "$SelectedFile" ];then
