@@ -52,7 +52,7 @@ make_choices () {
         echo -e "${TldrName[$i]} :tldr: ${TldrDescription[$i]}" >> "$TempFile"
     done
     for ((i = 0; i < ${#CheatName[@]}; i++));do
-        echo -e "${CheatName[$i]} :cheats: ${CheatDescription[$i]}" >> "$TempFile"
+        echo -e "${CheatName[$i]} :cheat: ${CheatDescription[$i]}" >> "$TempFile"
     done
     for ((i = 0; i < ${#ManName[@]}; i++));do
         echo -e "${ManName[$i]} :man: ${ManDescription[$i]}" >> "$TempFile"
