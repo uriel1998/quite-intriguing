@@ -14,7 +14,7 @@ If the above is too small, you can see it on [terminalizer](https://terminalizer
  4. [Installation](#4-installation)
  5. [Setup](#5-setup)
  6. [Usage](#6-usage)
- 7. [TODO](#12-todo)
+ 7. [TODO](#7-todo)
 
 ***
 
