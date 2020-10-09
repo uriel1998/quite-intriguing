@@ -37,7 +37,7 @@ This project is licensed under the MIT License. For the full license, see `LICEN
 ## 3. Prerequisites
 
 * [`fzf`](https://github.com/junegunn/fzf)
-* `awk`, `sed`, `apropos`
+* `awk`, `sed`, `apropos`, `grep`
 * [`tldr`](https://github.com/tldr-pages/tldr)
 * [`cheat`](https://github.com/rstacruz/cheatsheets)
 * [`rofi`](https://github.com/davatorium/rofi) (OPTIONAL)
@@ -63,6 +63,11 @@ as part of their UI, `qi` will match any filenames and enrich the descriptions.
 
 Omitting the search term is quite okay; including it just starts the search faster. 
 Including a query assumes TUI mode (the default).
+
+The preview in TUI mode is provided by `fzf`. You can scroll in the preview 
+window using either the mouse or `fzf`'s default binds of *shift-up* and 
+*shift-down*.  If you wish to edit these bindings, you'll have to edit my 
+script with the guidance from [here](https://www.mankier.com/1/fzf#Key/Event_Bindings).
 
 The various switches are:
     
