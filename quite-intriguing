@@ -37,11 +37,11 @@ building_our_database (){
     echo "§ Adding descriptions to cheats"
     # Now we're going to add descriptions to the cheatsheets...
     for ((i = 0; i < ${#CheatName[@]}; i++));do
-        CheatDescription[$i]=$(echo "$RawResults" | rg -e "^${CheatName[$i]} "| awk -F '-' '{print $2 }'|head -1)
+        CheatDescription[$i]=$(echo "$RawResults" | grep -e "^${CheatName[$i]} "| awk -F '-' '{print $2 }'|head -1)
     done
     echo "§ Adding descriptions to tldr"
     for ((i = 0; i < ${#TldrName[@]}; i++));do
-        TldrDescription[$i]=$(echo "$RawResults" | rg -e "^${TldrName[$i]} "| awk -F '-' '{print $2 }'|head -1)        
+        TldrDescription[$i]=$(echo "$RawResults" | grep -e "^${TldrName[$i]} "| awk -F '-' '{print $2 }'|head -1)        
     done
     echo "§ Finished supplementing cheatsheets and tldr"
 } 
