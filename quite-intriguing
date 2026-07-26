@@ -4,6 +4,7 @@
 
 CacheFile=$HOME/.config/qi_cachefile
 TempFile=$(mktemp)
+declare -A DescriptionByName
 declare -a ManName
 declare -a ManDescription
 declare -a TldrName
@@ -44,6 +45,8 @@ parse_selection() {
 }
 
 building_our_database (){
+    local line key description
+
     #do this first
     RawResults=""
     echo "§ Reading in manpages"
@@ -51,6 +54,13 @@ building_our_database (){
     #zsoelim (1)          - satisfy .so requests in roff input
     mapfile -t ManName < <(echo "$RawResults" | awk -F ' - ' '{print $1 }' | sed 's/[[:space:]]*$//')
     mapfile -t ManDescription < <(echo "$RawResults" | awk -F ' - ' '{print $2 }' | sed 's/[[:space:]]*$//')
+    while IFS= read -r line; do
+        key=${line%% (*}
+        description=${line#* - }
+        if [ -n "$key" ] && [ "$description" != "$line" ] && [ -z "${DescriptionByName[$key]}" ]; then
+            DescriptionByName[$key]=$description
+        fi
+    done <<< "$RawResults"
 
     #Now for cheatsheets
     #Follow the same template for any other 
@@ -61,11 +71,11 @@ building_our_database (){
     echo "§ Adding descriptions to cheats"
     # Now we're going to add descriptions to the cheatsheets...
     for ((i = 0; i < ${#CheatName[@]}; i++));do
-        CheatDescription[i]=$(echo "$RawResults" | grep -e "^${CheatName[$i]} " | awk -F '-' '{print $2 }' | head -1)
+        CheatDescription[i]=${DescriptionByName[${CheatName[$i]}]}
     done
     echo "§ Adding descriptions to tldr"
     for ((i = 0; i < ${#TldrName[@]}; i++));do
-        TldrDescription[i]=$(echo "$RawResults" | grep -e "^${TldrName[$i]} " | awk -F '-' '{print $2 }' | head -1)
+        TldrDescription[i]=${DescriptionByName[${TldrName[$i]}]}
     done
     echo "§ Finished supplementing cheatsheets and tldr"
 } 
@@ -83,7 +93,11 @@ make_choices () {
     done
     echo "§ Sorting options"
     mkdir -p "$(dirname "$CacheFile")"
-    sort "$TempFile" | uniq -u > "$CacheFile"
+    if command -v pv >/dev/null 2>&1; then
+        pv "$TempFile" | sort -u > "$CacheFile"
+    else
+        sort -u "$TempFile" > "$CacheFile"
+    fi
     rm -rf "$TempFile"
 }
 
@@ -114,12 +128,12 @@ choose_page (){
             #No Preview
             #SelectedFile=$(cat "$CacheFile" | fzf --no-hscroll -m --height 60% --border --ansi --no-bold)
             #With Preview
-            selected_line=$(fzf --no-hscroll -m --height 80% --border --ansi --no-bold --preview="$SCRIPTDIR/quite-intriguing-preview {}" < "$CacheFile")
+            selected_line=$(fzf --exact --no-hscroll -m --height 80% --border --ansi --no-bold --preview="$SCRIPTDIR/quite-intriguing-preview {}" < "$CacheFile")
         else
             #No Preview
             #SelectedFile=$(cat "$CacheFile" | fzf --no-hscroll -m --height 60% --border --ansi --no-bold  -1 --query="$Query")
             #With Preview
-            selected_line=$(fzf --no-hscroll -m --height 80% --border --ansi --no-bold --preview="$SCRIPTDIR/quite-intriguing-preview {}" --query="$Query" < "$CacheFile")
+            selected_line=$(fzf --exact --no-hscroll -m --height 80% --border --ansi --no-bold --preview="$SCRIPTDIR/quite-intriguing-preview {}" --query="$Query" < "$CacheFile")
         fi
 
         if [ -z "$selected_line" ];then
