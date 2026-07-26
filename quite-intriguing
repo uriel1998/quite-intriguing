@@ -4,20 +4,44 @@
 
 CacheFile=$HOME/.config/qi_cachefile
 TempFile=$(mktemp)
-Long=0
-NumResults=0
 declare -a ManName
 declare -a ManDescription
 declare -a TldrName
 declare -a TldrDescription
 declare -a CheatName
 declare -a CheatDescription
-SearchTerm="$@"
 CliOnly="true"
 Rebuild="false"
 Run="true"
 Query=""
-SCRIPTDIR="$( cd "$(dirname "$0")" ; pwd -P )"
+SCRIPTDIR="$(cd "$(dirname "$0")" || exit; pwd -P)"
+
+parse_selection() {
+    local selection="$1"
+    local name source command_name man_section
+
+    name=${selection%% :*}
+    source=${selection#* :}
+    source=${source%%:*}
+
+    case "$source" in
+        man)
+            if [[ $name =~ ^(.+)\ \(([[:alnum:]]+)\)$ ]]; then
+                command_name=${BASH_REMATCH[1]}
+                man_section=${BASH_REMATCH[2]}
+                printf 'man\0-Pcat\0%s\0%s\0' "$man_section" "$command_name"
+            else
+                printf 'man\0-Pcat\0%s\0' "$name"
+            fi
+            ;;
+        tldr|cheat)
+            printf '%s\0%s\0' "$source" "$name"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
 
 building_our_database (){
     #do this first
@@ -37,14 +61,12 @@ building_our_database (){
     echo "§ Adding descriptions to cheats"
     # Now we're going to add descriptions to the cheatsheets...
     for ((i = 0; i < ${#CheatName[@]}; i++));do
-        (CheatDescription[$i]=$(echo "$RawResults" | grep -e "^${CheatName[$i]} "| awk -F '-' '{print $2 }'|head -1)) &
+        CheatDescription[i]=$(echo "$RawResults" | grep -e "^${CheatName[$i]} " | awk -F '-' '{print $2 }' | head -1)
     done
-    wait
     echo "§ Adding descriptions to tldr"
     for ((i = 0; i < ${#TldrName[@]}; i++));do
-        (TldrDescription[$i]=$(echo "$RawResults" | grep -e "^${TldrName[$i]} "| awk -F '-' '{print $2 }'|head -1)) &
+        TldrDescription[i]=$(echo "$RawResults" | grep -e "^${TldrName[$i]} " | awk -F '-' '{print $2 }' | head -1)
     done
-    wait
     echo "§ Finished supplementing cheatsheets and tldr"
 } 
 
@@ -60,7 +82,8 @@ make_choices () {
         echo -e "${ManName[$i]} :man: ${ManDescription[$i]}" >> "$TempFile"
     done
     echo "§ Sorting options"
-    cat "$TempFile" | sort | uniq -u > "$CacheFile"
+    mkdir -p "$(dirname "$CacheFile")"
+    sort "$TempFile" | uniq -u > "$CacheFile"
     rm -rf "$TempFile"
 }
 
@@ -80,6 +103,9 @@ display_help(){
 }
 
 choose_page (){
+    local selected_line
+    local -a selected_cmd
+    local output
 
      #cat mansearch_cachefile | fzf --no-hscroll -m --height 60% --border --ansi --no-bold --preview="/home/steven/documents/programming/multiple_scripts/mansearch-fzf-preview {}"
     if [ "$CliOnly" == "true" ];then
@@ -88,29 +114,31 @@ choose_page (){
             #No Preview
             #SelectedFile=$(cat "$CacheFile" | fzf --no-hscroll -m --height 60% --border --ansi --no-bold)
             #With Preview
-            SelectedFile=$(cat "$CacheFile" | fzf --no-hscroll -m --height 80% --border --ansi --no-bold --preview="$SCRIPTDIR/quite-intriguing-preview {}" | sed 's/ (/./g' | sed 's/)//g' | sed 's/:man:/:man -Pcat:/g' | awk -F ':' '{print $2 " " $1}')
+            selected_line=$(fzf --no-hscroll -m --height 80% --border --ansi --no-bold --preview="$SCRIPTDIR/quite-intriguing-preview {}" < "$CacheFile")
         else
             #No Preview
             #SelectedFile=$(cat "$CacheFile" | fzf --no-hscroll -m --height 60% --border --ansi --no-bold  -1 --query="$Query")
             #With Preview
-            SelectedFile=$(cat "$CacheFile" | fzf --no-hscroll -m --height 80% --border --ansi --no-bold --preview="$SCRIPTDIR/quite-intriguing-preview {}" --query="$Query" | sed 's/ (/./g' | sed 's/)//g' | sed 's/:man:/:man -Pcat:/g' | awk -F ':' '{print $2 " " $1}')
+            selected_line=$(fzf --no-hscroll -m --height 80% --border --ansi --no-bold --preview="$SCRIPTDIR/quite-intriguing-preview {}" --query="$Query" < "$CacheFile")
         fi
 
-        if [ -z "$SelectedFile" ];then
+        if [ -z "$selected_line" ];then
             exit 0
         else
-            eval "$SelectedFile"
+            mapfile -d '' -t selected_cmd < <(parse_selection "$selected_line") || exit 1
+            "${selected_cmd[@]}"
         fi
 
 
     else
         #use ROFI, not zenity 
-        SelectedFile=$(cat "$CacheFile"  | rofi -i -dmenu -p "Which manual?" -theme DarkBlue | sed 's/ (/./g' | sed 's/)//g' | sed 's/:man:/:man -Pcat:/g' | awk -F ':' '{print $2 " " $1}')
-        if [ -z "$SelectedFile" ];then
+        selected_line=$(rofi -i -dmenu -p "Which manual?" -theme DarkBlue < "$CacheFile")
+        if [ -z "$selected_line" ];then
             exit 0
         else
-            OutPut=$(eval "$SelectedFile")
-            rofi -location 1 -click-to-exit -lines 15 -fixed-num-lines -theme DarkBlue -e "$OutPut"
+            mapfile -d '' -t selected_cmd < <(parse_selection "$selected_line") || exit 1
+            output=$("${selected_cmd[@]}")
+            rofi -location 1 -click-to-exit -lines 15 -fixed-num-lines -theme DarkBlue -e "$output"
         fi
     fi   
 }
@@ -123,8 +151,7 @@ choose_page (){
     option="$1"
         case $option in
         -h) display_help
-            exit
-            shift ;;      
+            exit ;;      
         -r) echo "§ Rebuilding cache before run; please be patient."
             Rebuild="true"
             Run="true"
@@ -135,7 +162,7 @@ choose_page (){
             shift ;;
         -g) CliOnly="false"
             shift ;;      
-        *)  Query=$(echo "$1")
+        *)  Query="${Query:+$Query }$1"
             Run="true"
             CliOnly="true"
             shift;;

@@ -1,5 +1,25 @@
 #!/bin/bash
 
-Instring="$@" 
-Command=$(echo "$Instring" | sed 's/ (/./g' | sed 's/)//g' | sed 's/:man:/:man -Pcat:/g' | awk -F ':' '{print $2 " " $1}')
-eval "$Command" 
+Selection="$*"
+Name=${Selection%% :*}
+Source=${Selection#* :}
+Source=${Source%%:*}
+
+case "$Source" in
+    man)
+        if [[ $Name =~ ^(.+)\ \(([[:alnum:]]+)\)$ ]]; then
+            man -Pcat "${BASH_REMATCH[2]}" "${BASH_REMATCH[1]}"
+        else
+            man -Pcat "$Name"
+        fi
+        ;;
+    tldr)
+        tldr "$Name"
+        ;;
+    cheat)
+        cheat "$Name"
+        ;;
+    *)
+        exit 1
+        ;;
+esac

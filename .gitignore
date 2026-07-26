@@ -174,3 +174,14 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# AI tool metadata
+.agents/
+.aider*
+.claude/
+.cursor/
+.gemini/
+.codex/
+
+# Repo-local runtime artifacts
+qi_cachefile
