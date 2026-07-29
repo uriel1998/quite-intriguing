@@ -1,10 +1,17 @@
 #!/bin/bash
 
-#Strongly inspired by [macho](https://hiphish.github.io/blog/2020/05/31/macho-man-command-on-steroids/)
+# Interactive browser for manpages, tldr pages, and cheat sheets.
+# Inspired by [macho](https://hiphish.github.io/blog/2020/05/31/macho-man-command-on-steroids/).
 
+# Persistent cache consumed by fzf/rofi during interactive selection.
 CacheFile=$HOME/.config/qi_cachefile
+# Temporary staging file used while rebuilding the cache.
 TempFile=$(mktemp)
+# Maps a command name to the first matching description seen in apropos output.
 declare -A DescriptionByName
+# Tracks executable basenames discoverable from the current PATH.
+declare -A ExecutableInPath
+# Parallel arrays for each source that ultimately become cache rows.
 declare -a ManName
 declare -a ManDescription
 declare -a TldrName
@@ -15,18 +22,22 @@ CliOnly="true"
 Rebuild="false"
 Run="true"
 Query=""
+# Resolve the script directory so the preview helper can be called reliably.
 SCRIPTDIR="$(cd "$(dirname "$0")" || exit; pwd -P)"
 
 parse_selection() {
     local selection="$1"
     local name source command_name man_section
 
+    # Cache rows look like: "name :source: description".
     name=${selection%% :*}
     source=${selection#* :}
     source=${source%%:*}
 
     case "$source" in
         man)
+            # Manpage rows include the section in the display name, but `man`
+            # wants section and page name as separate arguments.
             if [[ $name =~ ^(.+)\ \(([[:alnum:]]+)\)$ ]]; then
                 command_name=${BASH_REMATCH[1]}
                 man_section=${BASH_REMATCH[2]}
@@ -44,16 +55,60 @@ parse_selection() {
     esac
 }
 
+load_path_executables() {
+    local dir entry base
+    local -a path_dirs
+
+    # Rebuild the executable lookup from scratch each time the cache is rebuilt.
+    ExecutableInPath=()
+    IFS=: read -r -a path_dirs <<< "$PATH"
+    for dir in "${path_dirs[@]}"; do
+        [ -d "$dir" ] || continue
+        # Record basenames so "dpkg (1)" can match "/usr/bin/dpkg".
+        while IFS= read -r -d '' entry; do
+            base=${entry##*/}
+            ExecutableInPath["$base"]=1
+        done < <(find "$dir" -maxdepth 1 -type f -executable -print0 2>/dev/null)
+    done
+}
+
+filter_entries_by_path() {
+    local -n names_ref=$1
+    local -n descriptions_ref=$2
+    local -a filtered_names=()
+    local -a filtered_descriptions=()
+    local i command_name
+
+    # Keep entries only when their command stem resolves from PATH.
+    for ((i = 0; i < ${#names_ref[@]}; i++)); do
+        command_name=${names_ref[$i]}
+        command_name=${command_name%% (*}
+        if [ -n "${ExecutableInPath[$command_name]}" ]; then
+            filtered_names+=("${names_ref[$i]}")
+            filtered_descriptions+=("${descriptions_ref[$i]}")
+        fi
+    done
+
+    names_ref=("${filtered_names[@]}")
+    descriptions_ref=("${filtered_descriptions[@]}")
+}
+
 building_our_database (){
     local line key description
 
-    #do this first
+    # Build the PATH lookup first so later sources can be filtered consistently.
+    echo "§ Reading executables from PATH"
+    load_path_executables
     RawResults=""
     echo "§ Reading in manpages"
     RawResults=$(apropos . | grep -v -E '^.+ \(0\)')
-    #zsoelim (1)          - satisfy .so requests in roff input
+    # Example apropos row:
+    # zsoelim (1) - satisfy .so requests in roff input
     mapfile -t ManName < <(echo "$RawResults" | awk -F ' - ' '{print $1 }' | sed 's/[[:space:]]*$//')
     mapfile -t ManDescription < <(echo "$RawResults" | awk -F ' - ' '{print $2 }' | sed 's/[[:space:]]*$//')
+    # Cache the first description seen for each command stem so cheat/tldr
+    # entries can inherit a short description even though their CLIs do not
+    # provide one directly.
     while IFS= read -r line; do
         key=${line%% (*}
         description=${line#* - }
@@ -62,14 +117,13 @@ building_our_database (){
         fi
     done <<< "$RawResults"
 
-    #Now for cheatsheets
-    #Follow the same template for any other 
+    # Pull entry names from the cheat/tldr indexes.
     echo "§ Reading in cheatsheets"
     mapfile -t CheatName < <(cheat -l | cat | awk '{print $1 }'| sed 's/[[:space:]]*$//')
     echo "§ Reading in tldr"
     mapfile -t TldrName < <(tldr -l 2>/dev/null | awk '{print $1 }'| sed 's/[[:space:]]*$//')
     echo "§ Adding descriptions to cheats"
-    # Now we're going to add descriptions to the cheatsheets...
+    # Reuse the apropos description when the command names line up.
     for ((i = 0; i < ${#CheatName[@]}; i++));do
         CheatDescription[i]=${DescriptionByName[${CheatName[$i]}]}
     done
@@ -77,11 +131,18 @@ building_our_database (){
     for ((i = 0; i < ${#TldrName[@]}; i++));do
         TldrDescription[i]=${DescriptionByName[${TldrName[$i]}]}
     done
+    # Drop entries that do not correspond to a command currently on PATH.
+    echo "§ Filtering entries to executables available in PATH"
+    filter_entries_by_path ManName ManDescription
+    filter_entries_by_path CheatName CheatDescription
+    filter_entries_by_path TldrName TldrDescription
     echo "§ Finished supplementing cheatsheets and tldr"
 } 
 
 make_choices () {
     echo "§ Compiling options"
+    # Emit one normalized cache row per source. The selection parser depends on
+    # the "name :source: description" shape.
     for ((i = 0; i < ${#TldrName[@]}; i++));do
         echo -e "${TldrName[$i]} :tldr: ${TldrDescription[$i]}" >> "$TempFile"
     done
@@ -93,6 +154,7 @@ make_choices () {
     done
     echo "§ Sorting options"
     mkdir -p "$(dirname "$CacheFile")"
+    # `pv` makes large cache rebuilds feel less opaque when available.
     if command -v pv >/dev/null 2>&1; then
         pv "$TempFile" | sort -u > "$CacheFile"
     else
@@ -121,31 +183,27 @@ choose_page (){
     local -a selected_cmd
     local output
 
-     #cat mansearch_cachefile | fzf --no-hscroll -m --height 60% --border --ansi --no-bold --preview="/home/steven/documents/programming/multiple_scripts/mansearch-fzf-preview {}"
     if [ "$CliOnly" == "true" ];then
 
         if [ -z "$Query" ]; then      
-            #No Preview
-            #SelectedFile=$(cat "$CacheFile" | fzf --no-hscroll -m --height 60% --border --ansi --no-bold)
-            #With Preview
+            # Interactive TUI mode with a live preview rendered by the helper.
             selected_line=$(fzf --exact --no-hscroll -m --height 80% --border --ansi --no-bold --preview="$SCRIPTDIR/quite-intriguing-preview {}" < "$CacheFile")
         else
-            #No Preview
-            #SelectedFile=$(cat "$CacheFile" | fzf --no-hscroll -m --height 60% --border --ansi --no-bold  -1 --query="$Query")
-            #With Preview
+            # Seed fzf with the initial query when the user passed search terms.
             selected_line=$(fzf --exact --no-hscroll -m --height 80% --border --ansi --no-bold --preview="$SCRIPTDIR/quite-intriguing-preview {}" --query="$Query" < "$CacheFile")
         fi
 
         if [ -z "$selected_line" ];then
             exit 0
         else
+            # Parse the cache row into a null-delimited argv and exec it safely.
             mapfile -d '' -t selected_cmd < <(parse_selection "$selected_line") || exit 1
             "${selected_cmd[@]}"
         fi
 
 
     else
-        #use ROFI, not zenity 
+        # GUI mode delegates selection and display to rofi instead of fzf.
         selected_line=$(rofi -i -dmenu -p "Which manual?" -theme DarkBlue < "$CacheFile")
         if [ -z "$selected_line" ];then
             exit 0
@@ -159,7 +217,7 @@ choose_page (){
  
 
 ##############################################################################
-# Get options
+# Parse CLI options and decide whether to rebuild, run, or both.
 ##############################################################################
     while [ $# -gt 0 ]; do
     option="$1"
@@ -182,6 +240,7 @@ choose_page (){
             shift;;
         esac
     done    
+# Missing cache is treated the same as an explicit rebuild request.
 if [ ! -f "$CacheFile" ];then 
     echo "§ Cachefile not found; rebuilding."
     Rebuild="true"

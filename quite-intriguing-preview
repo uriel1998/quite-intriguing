@@ -1,12 +1,15 @@
 #!/bin/bash
 
+# Preview helper for fzf/rofi selections emitted by `quite-intriguing`.
 Selection="$*"
+# Cache rows look like: "name :source: description".
 Name=${Selection%% :*}
 Source=${Selection#* :}
 Source=${Source%%:*}
 
 case "$Source" in
     man)
+        # Split "dpkg (1)" into page name and section before invoking `man`.
         if [[ $Name =~ ^(.+)\ \(([[:alnum:]]+)\)$ ]]; then
             man -Pcat "${BASH_REMATCH[2]}" "${BASH_REMATCH[1]}"
         else
@@ -14,6 +17,7 @@ case "$Source" in
         fi
         ;;
     tldr)
+        # `tldr` and `cheat` already expect the bare command name.
         tldr "$Name"
         ;;
     cheat)
