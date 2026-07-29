@@ -3,10 +3,18 @@
 # Interactive browser for manpages, tldr pages, and cheat sheets.
 # Inspired by [macho](https://hiphish.github.io/blog/2020/05/31/macho-man-command-on-steroids/).
 
+# Cron often provides a minimal PATH. Seed it with the POSIX default and keep
+# any user-specific directories that may already be present.
+DefaultPath=$(getconf PATH 2>/dev/null)
+PATH="${PATH:+$PATH:}${DefaultPath:-/usr/bin:/bin}"
+export PATH
+
 # Persistent cache consumed by fzf/rofi during interactive selection.
 CacheFile=$HOME/.config/qi_cachefile
 # Temporary staging file used while rebuilding the cache.
 TempFile=$(mktemp)
+# Stage the rebuilt cache separately so it can be swapped into place atomically.
+CacheTempFile=$(mktemp)
 # Maps a command name to the first matching description seen in apropos output.
 declare -A DescriptionByName
 # Tracks executable basenames discoverable from the current PATH.
@@ -22,8 +30,19 @@ CliOnly="true"
 Rebuild="false"
 Run="true"
 Query=""
+Quiet="false"
 # Resolve the script directory so the preview helper can be called reliably.
 SCRIPTDIR="$(cd "$(dirname "$0")" || exit; pwd -P)"
+
+cleanup_tempfiles() {
+    rm -f "$TempFile" "$CacheTempFile"
+}
+
+log_status() {
+    [ "$Quiet" == "true" ] || echo "$@"
+}
+
+trap cleanup_tempfiles EXIT
 
 parse_selection() {
     local selection="$1"
@@ -94,13 +113,20 @@ filter_entries_by_path() {
 }
 
 building_our_database (){
+    local RawResults
     local line key description
 
     # Build the PATH lookup first so later sources can be filtered consistently.
-    echo "§ Reading executables from PATH"
+    DescriptionByName=()
+    ManName=()
+    ManDescription=()
+    CheatName=()
+    CheatDescription=()
+    TldrName=()
+    TldrDescription=()
+    log_status "§ Reading executables from PATH"
     load_path_executables
-    RawResults=""
-    echo "§ Reading in manpages"
+    log_status "§ Reading in manpages"
     RawResults=$(apropos . | grep -v -E '^.+ \(0\)')
     # Example apropos row:
     # zsoelim (1) - satisfy .so requests in roff input
@@ -118,29 +144,31 @@ building_our_database (){
     done <<< "$RawResults"
 
     # Pull entry names from the cheat/tldr indexes.
-    echo "§ Reading in cheatsheets"
+    log_status "§ Reading in cheatsheets"
     mapfile -t CheatName < <(cheat -l | cat | awk '{print $1 }'| sed 's/[[:space:]]*$//')
-    echo "§ Reading in tldr"
+    log_status "§ Reading in tldr"
     mapfile -t TldrName < <(tldr -l 2>/dev/null | awk '{print $1 }'| sed 's/[[:space:]]*$//')
-    echo "§ Adding descriptions to cheats"
+    log_status "§ Adding descriptions to cheats"
     # Reuse the apropos description when the command names line up.
     for ((i = 0; i < ${#CheatName[@]}; i++));do
         CheatDescription[i]=${DescriptionByName[${CheatName[$i]}]}
     done
-    echo "§ Adding descriptions to tldr"
+    log_status "§ Adding descriptions to tldr"
     for ((i = 0; i < ${#TldrName[@]}; i++));do
         TldrDescription[i]=${DescriptionByName[${TldrName[$i]}]}
     done
     # Drop entries that do not correspond to a command currently on PATH.
-    echo "§ Filtering entries to executables available in PATH"
+    log_status "§ Filtering entries to executables available in PATH"
     filter_entries_by_path ManName ManDescription
     filter_entries_by_path CheatName CheatDescription
     filter_entries_by_path TldrName TldrDescription
-    echo "§ Finished supplementing cheatsheets and tldr"
+    log_status "§ Finished supplementing cheatsheets and tldr"
 } 
 
 make_choices () {
-    echo "§ Compiling options"
+    : > "$TempFile"
+    : > "$CacheTempFile"
+    log_status "§ Compiling options"
     # Emit one normalized cache row per source. The selection parser depends on
     # the "name :source: description" shape.
     for ((i = 0; i < ${#TldrName[@]}; i++));do
@@ -152,15 +180,15 @@ make_choices () {
     for ((i = 0; i < ${#ManName[@]}; i++));do
         echo -e "${ManName[$i]} :man: ${ManDescription[$i]}" >> "$TempFile"
     done
-    echo "§ Sorting options"
+    log_status "§ Sorting options"
     mkdir -p "$(dirname "$CacheFile")"
     # `pv` makes large cache rebuilds feel less opaque when available.
-    if command -v pv >/dev/null 2>&1; then
-        pv "$TempFile" | sort -u > "$CacheFile"
+    if command -v pv >/dev/null 2>&1 && [ "$Quiet" != "true" ]; then
+        pv "$TempFile" | sort -u > "$CacheTempFile"
     else
-        sort -u "$TempFile" > "$CacheFile"
+        sort -u "$TempFile" > "$CacheTempFile"
     fi
-    rm -rf "$TempFile"
+    mv "$CacheTempFile" "$CacheFile"
 }
 
 ##############################################################################
@@ -228,7 +256,7 @@ choose_page (){
             Rebuild="true"
             Run="true"
             shift ;;      
-        -p) echo "§ Rebuilding cache only."
+        -p) Quiet="true"
             Rebuild="true"
             Run="false"
             shift ;;
@@ -242,7 +270,7 @@ choose_page (){
     done    
 # Missing cache is treated the same as an explicit rebuild request.
 if [ ! -f "$CacheFile" ];then 
-    echo "§ Cachefile not found; rebuilding."
+    log_status "§ Cachefile not found; rebuilding."
     Rebuild="true"
 fi
 if [ "$Rebuild" == "true" ];then
